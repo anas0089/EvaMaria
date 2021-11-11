@@ -19,11 +19,14 @@ from database.filters_mdb import(
    find_filter,
    get_filters,
 )
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.ERROR)
 
 BUTTONS = {}
 SPELL_CHECK = {}
 
-@Client.on_message(filters.group & filters.text & filters.incoming)
+@Client.on_message(filters.group & filters.text & ~filters.edited & filters.incoming)
 async def give_filter(client,message):
     group_id = message.chat.id
     name = message.text
@@ -62,7 +65,7 @@ async def give_filter(client,message):
                             reply_markup=InlineKeyboardMarkup(button)
                         )
                 except Exception as e:
-                    print(e)
+                    logger.exception(e)
                 break 
 
     else:
@@ -80,7 +83,7 @@ async def next_page(bot, query):
         offset = 0
     search = BUTTONS.get(key)
     if not search:
-        await query.answer("You are using this for one of my old message, please send the request again.",show_alert=True)
+        await query.answer("You are using one of my old messages, please send the request again.",show_alert=True)
         return
 
     files, n_offset, total = await get_search_results(search, offset=offset, filter=True)
@@ -145,13 +148,13 @@ async def next_page(bot, query):
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
     _, user, movie_ = query.data.split('#')
-    movies = SPELL_CHECK.get(query.message.reply_to_message.message_id)
-    if not movies:
-        return await query.answer("You are clicking on an old button which is expired.", show_alert=True)
     if int(user) != 0 and query.from_user.id != int(user):
         return await query.answer("okDa", show_alert=True)
     if movie_  == "close_spellcheck":
         return await query.message.delete()
+    movies = SPELL_CHECK.get(query.message.reply_to_message.message_id)
+    if not movies:
+        return await query.answer("You are clicking on an old button which is expired.", show_alert=True)
     movie = movies[(int(movie_))]
     await query.answer('Checking for Movie in database...')
     files, offset, total_results = await get_search_results(movie, offset=0, filter=True)
@@ -227,8 +230,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await query.answer()
 
         group_id = query.data.split(":")[1]
-        title = query.data.split(":")[2]
-        act = query.data.split(":")[3]
+        
+        act = query.data.split(":")[2]
+        hr = await client.get_chat(int(group_id))
+        title = hr.title
         user_id = query.from_user.id
 
         if act == "":
@@ -239,7 +244,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             cb = "disconnect"
 
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"{stat}", callback_data=f"{cb}:{group_id}:{title}"),
+            [InlineKeyboardButton(f"{stat}", callback_data=f"{cb}:{group_id}"),
                 InlineKeyboardButton("DELETE", callback_data=f"deletecb:{group_id}")],
             [InlineKeyboardButton("BACK", callback_data="backcb")]
         ])
@@ -255,7 +260,11 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await query.answer()
 
         group_id = query.data.split(":")[1]
-        title = query.data.split(":")[2]
+
+        hr = await client.get_chat(int(group_id))
+
+        title = hr.title
+
         user_id = query.from_user.id
 
         mkact = await make_active(str(user_id), str(group_id))
@@ -268,10 +277,15 @@ async def cb_handler(client: Client, query: CallbackQuery):
         else:
             await query.message.edit_text('Some error occured!!', parse_mode="md")
         return
+
     elif "disconnect" in query.data:
         await query.answer()
 
-        title = query.data.split(":")[2]
+        group_id = query.data.split(":")[1]
+
+        hr = await client.get_chat(int(group_id))
+
+        title = hr.title
         user_id = query.from_user.id
 
         mkinact = await make_inactive(str(user_id))
@@ -282,7 +296,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 parse_mode="md"
             )
         else:
-            await query.message.edit_text('Some error occured!!', parse_mode="md")
+            await query.message.edit_text(
+                f"Some error occured!!",
+                parse_mode="md"
+            )
         return
     elif "deletecb" in query.data:
         await query.answer()
@@ -297,7 +314,10 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 "Successfully deleted connection"
             )
         else:
-            await query.message.edit_text('Some error occured!!', parse_mode="md")
+            await query.message.edit_text(
+                f"Some error occured!!",
+                parse_mode="md"
+            )
         return
     elif query.data == "backcb":
         await query.answer()
@@ -320,7 +340,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
                 buttons.append(
                     [
                         InlineKeyboardButton(
-                            text=f"{title}{act}", callback_data=f"groupcb:{groupid}:{title}:{act}"
+                            text=f"{title}{act}", callback_data=f"groupcb:{groupid}:{act}"
                         )
                     ]
                 )
@@ -356,7 +376,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             try:
                 f_caption=CUSTOM_FILE_CAPTION.format(file_name=title, file_size=size, file_caption=f_caption)
             except Exception as e:
-                print(e)
+                logger.exception(e)
             f_caption=f_caption
         if f_caption is None:
             f_caption = f"{files.file_name}"
@@ -398,7 +418,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
             try:
                 f_caption=CUSTOM_FILE_CAPTION.format(file_name=title, file_size=size, file_caption=f_caption)
             except Exception as e:
-                print(e)
+                logger.exception(e)
                 f_caption=f_caption
         if f_caption is None:
             f_caption = f"{title}"
@@ -622,7 +642,7 @@ async def auto_filter(client, msg, spoll=False):
         btn.append(
             [InlineKeyboardButton(text="🗓 1/1",callback_data="pages")]
         )
-    imdb = await get_poster(search) if IMDB else None
+    imdb = await get_poster(search, file=(files[0]).file_name) if IMDB else None
     if imdb:
         cap = IMDB_TEMPLATE.format(
             query = search,
@@ -664,7 +684,7 @@ async def auto_filter(client, msg, spoll=False):
             poster = pic.replace('.jpg', "._V1_UX360.jpg")
             await message.reply_photo(photo=poster, caption=cap, reply_markup=InlineKeyboardMarkup(btn))
         except Exception as e:
-            print(e)
+            logger.exception(e)
             await message.reply_text(cap, reply_markup=InlineKeyboardMarkup(btn))
     else:
         await message.reply_text(cap, reply_markup=InlineKeyboardMarkup(btn))
@@ -673,13 +693,13 @@ async def auto_filter(client, msg, spoll=False):
         
 
 async def advantage_spell_chok(msg):
-    query = re.sub(r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|giv(e)?|gib)(\sme)?)|movie(s)?|new|latest|br((o|u)h?)*|^h(e)?(l)*(o)*|mal(ayalam)?|tamil|file|that|find|und(o)*|kit(t(i|y)?)?o(w)?|thar(o)*w?|kittum(o)*|aya(k)*(um(o)*)?|full\smovie|any(one)|with\ssubtitle)", "", msg.text) # plis contribute some common words 
-    query = msg.text.strip() + "movie"
+    query = re.sub(r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|giv(e)?|gib)(\sme)?)|movie(s)?|new|latest|br((o|u)h?)*|^h(e|a)?(l)*(o)*|mal(ayalam)?|t(h)?amil|file|that|find|und(o)*|kit(t(i|y)?)?o(w)?|thar(u)?(o)*w?|kittum(o)*|aya(k)*(um(o)*)?|full\smovie|any(one)|with\ssubtitle(s)?)", "", msg.text, flags=re.IGNORECASE) # plis contribute some common words 
+    query = query.strip() + " movie"
     g_s = await search_gagala(query)
     g_s += await search_gagala(msg.text)
     gs_parsed = []
     if not g_s:
-        k = await msg.reply("I cant find any movie in that name.")
+        k = await msg.reply("I couldn't find any movie in that name.")
         await asyncio.sleep(8)
         await k.delete()
         return
@@ -702,12 +722,13 @@ async def advantage_spell_chok(msg):
             imdb_s = await get_poster(mov.strip(), bulk=True) # searching each keyword in imdb
             if imdb_s:
                 movielist += [movie.get('title') for movie in imdb_s]
-    if not movielist:
-        k = await msg.reply("I cant find anything related to that. Checke your spelling")
-        await asyncio.sleep(8)
-        await k.delete()
     movielist += [(re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE)).strip() for i in gs_parsed]
     movielist = list(dict.fromkeys(movielist)) # removing duplicates
+    if not movielist:
+        k = await msg.reply("I couldn't find anything related to that. Check your spelling")
+        await asyncio.sleep(8)
+        await k.delete()
+        return
     SPELL_CHECK[msg.message_id] = movielist
     btn = [[
                 InlineKeyboardButton(
@@ -716,6 +737,6 @@ async def advantage_spell_chok(msg):
                 )
             ] for k, movie in enumerate(movielist)]
     btn.append([InlineKeyboardButton(text="Close", callback_data=f'spolling#{user}#close_spellcheck')])
-    await msg.reply('I cant find anything related to that\nDid you mean any one of these?', reply_markup=InlineKeyboardMarkup(btn))
+    await msg.reply("I couldn't find anything related to that\nDid you mean any one of these?", reply_markup=InlineKeyboardMarkup(btn))
     
 
