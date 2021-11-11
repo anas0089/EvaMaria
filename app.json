@@ -1,6 +1,7 @@
 {
     "name": "EvaMariaBot",
     "description": "When you going to send file on telegram channel this bot will save that in database, So you can search that easily in inline mode",
+    "stack": "container",
     "keywords": [
       "telegram",
       "auto-filter",
@@ -14,8 +15,8 @@
       "index",
       "inline"
     ],
-    "website": "https://github.com/anas0089/EvaMaria",
-    "repository": "https://github.com/anas0089/EvaMaria",
+    "website": "https://github.com/EvamariaTG/EvaMaria",
+    "repository": "https://github.com/EvamariaTG/EvaMaria",
     "env": {
         "BOT_TOKEN": {
             "description": "Your bot token.",
@@ -91,7 +92,7 @@
             "description": "choose b/w single or double buttons https://github.com/EvamariaTG/EvaMaria/issues/22",
             "required": false
         },
-        "P_TTTI_SHOW_OFF": {
+        "P_TTI_SHOW_OFF": {
             "description": "Customize Result Buttons to Callback or Url by (True = url / False = callback)",
             "required": false
         }
