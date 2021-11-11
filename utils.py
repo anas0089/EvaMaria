@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import List
 from pyrogram.types import InlineKeyboardButton
 from database.users_chats_db import db
-
+from bs4 import BeautifulSoup
 import requests
 
 logger = logging.getLogger(__name__)
@@ -52,17 +52,21 @@ async def is_subscribed(bot, query):
 
     return False
 
-async def get_poster(query, bulk=False, id=False):
+async def get_poster(query, bulk=False, id=False, file=None):
     if not id:
         # https://t.me/GetTGLink/4183
         query = (query.strip()).lower()
+        title = query
         year = re.findall(r'[1-2]\d{3}$', query, re.IGNORECASE)
         if year:
-            year = list_to_str(year)
+            year = list_to_str(year[:1])
             title = (query.replace(year, "")).strip()
+        elif file is not None:
+            year = re.findall(r'[1-2]\d{3}', file, re.IGNORECASE)
+            if year:
+                year = list_to_str(year[:1]) 
         else:
             year = None
-            title = query
         movieid = imdb.search_movie(title.lower(), results=10)
         if not movieid:
             return None
@@ -88,7 +92,7 @@ async def get_poster(query, bulk=False, id=False):
     else:
         date = "N/A"
     plot = ""
-    if LONG_IMDB_DESCRIPTION:
+    if not LONG_IMDB_DESCRIPTION:
         plot = movie.get('plot')
         if plot and len(plot) > 0:
             plot = plot[0]
